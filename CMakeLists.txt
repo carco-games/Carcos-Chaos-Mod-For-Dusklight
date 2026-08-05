@@ -1,17 +1,20 @@
-cmake_minimum_required(VERSION 3.26)
-project(carcos_challenge_mod CXX)
+cmake_minimum_required(VERSION 3.25)
+project(chaos_mod CXX)
 
-# The Dusklight version to build against: a release tag (e.g. "v1.5.0") or a commit SHA.
-if (NOT DUSKLIGHT_VERSION)
-    set(DUSKLIGHT_VERSION "4504e5009f22a8d32b2dc4b7470a543a9e2bafe4")
+if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(DUSK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../.." CACHE PATH "Path to dusk source root")
+    option(DUSK_MOD_USE_FULL_TREE "Use full build instead of the minimal mod SDK" OFF)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    if (DUSK_MOD_USE_FULL_TREE)
+        add_subdirectory("${DUSK_DIR}" dusk EXCLUDE_FROM_ALL)
+    else ()
+        add_subdirectory("${DUSK_DIR}/sdk" dusk-sdk EXCLUDE_FROM_ALL)
+    endif ()
 endif ()
-# Fetches the Dusklight sources into ./dusklight and provides DUSKLIGHT_DIR.
-# Use -DDUSKLIGHT_DIR= to point at an existing Dusklight checkout.
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchDusklight.cmake")
-add_subdirectory("${DUSKLIGHT_DIR}/sdk" dusklight-sdk EXCLUDE_FROM_ALL)
 
-add_mod(carcos_challenge_mod
-        FEATURES game          # remove for service/asset-only mods; add webgpu for GfxService
-        SOURCES src/mod.cpp
+add_mod(chaos_mod
+        FEATURES game
+        SOURCES  src/mod.cpp
         MOD_JSON mod.json
+        BUNDLE
 )

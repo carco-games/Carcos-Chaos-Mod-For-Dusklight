@@ -1,7 +1,7 @@
 {
-  "id": "carco.carcos_challenge_mod",
-  "name": "Carco's Challenge Mod",
-  "version": "1.0.1",
-  "author": "Carco",
+  "id": "carco.carcos_chaos_mod",
+  "name": "Carco's Chaos Mod",
+  "version": "1.0.0",
+  "author": "Carco Games",
   "description": "Various toggleable effects to make the game more challenging"
 }
