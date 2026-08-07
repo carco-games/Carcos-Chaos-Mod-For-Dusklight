@@ -394,7 +394,6 @@ void on_set_cut_type(ModContext*, void* args, void* retval, void*) {
 
     daAlink_c* link = mods::arg<daAlink_c*>(args, 0);
     u8 cutType = mods::arg<u8>(args, 1);
-    svc_log->info(mod_ctx, std::format("Cut Type: {}", cutType).c_str());
     if (cutType == daAlink_c::daPy_CUT_TYPE::CUT_TYPE_GUARD_ATTACK) {
         return;
     }
