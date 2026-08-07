@@ -11,6 +11,7 @@ Experience Dusklight like it's your worst nightmare!
   - Randomized Controls
   - No Sword
   - Instant Kill
+  - Attack Draining (with custom parry healing)
 - ### Shuffle Mode!
   - With a customizable timer!
 
