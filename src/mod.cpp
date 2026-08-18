@@ -26,17 +26,21 @@ ConfigVarHandle g_cvarInvisibleLink = 0;
 ConfigVarHandle g_cvarMoonJump = 0;
 ConfigVarHandle g_cvarSlipperyFloors = 0;
 ConfigVarHandle g_cvarRandomControls = 0;
-ConfigVarHandle g_cvarNoSword = 0;
 ConfigVarHandle g_cvarInstaKill = 0;
 ConfigVarHandle g_cvarAttackDrain = 0;
 
+UiWindowHandle g_settingsWindow = 0;
 ConfigVarHandle g_cvarEnableShuffleMode = 0;
 ConfigVarHandle g_cvarShuffleModeTimer = 0;
-UiWindowHandle g_settingsWindow = 0;
+ConfigVarHandle g_cvarEnableRandTimer = 0;
+ConfigVarHandle g_cvarRandTimerUpperLimit = 0;
+ConfigVarHandle g_cvarEnableToasts = 0;
+ConfigVarHandle g_cvarEnableMultipleShuffleEffects = 0;
 
 // Effects Settings Config Vars
 ConfigVarHandle g_cvarAttackDrainAmount = 0;
 ConfigVarHandle g_cvarParryHealAmount = 0;
+ConfigVarHandle g_cvarPunishParryMisses = 0;
 // ---------------------------------------------
 
 // Enums ---------------------------------------
@@ -46,9 +50,8 @@ enum Effects_e {
     /* 0x2 */ MOON_JUMP,
     /* 0x3 */ SLIPPERY,
     /* 0x4 */ RANDOM_CONTROLS,
-    /* 0x5 */ NO_SWORD,
-    /* 0x6 */ INSTA_KILL,
-    /* 0x7 */ ATTACK_DRAIN,
+    /* 0x5 */ INSTA_KILL,
+    /* 0x6 */ ATTACK_DRAIN,
 };
 // ---------------------------------------------
 
@@ -72,14 +75,10 @@ namespace structs {
 struct Controls_Mapping {
     u8 BUTTON_X;
     u8 BUTTON_Y;
-    u8 BUTTON_Z;
     u8 BUTTON_B;
-    u8 BUTTON_A;
-    u8 BUTTON_L;
-    u8 BUTTON_R;
 };
 Controls_Mapping controlsMapping = {
-    1, 1, 1, 1, 1, 1, 1
+    1, 1, 1
 };
 
 struct Effect {
@@ -118,20 +117,19 @@ int get_int_option(ConfigVarHandle handle, int fallback) {
 void set_bool_option(ConfigVarHandle handle, bool value) {
     svc_config->set_bool(mod_ctx, handle, value);
 }
+void set_int_option(ConfigVarHandle handle, int value) {
+    svc_config->set_int(mod_ctx, handle, value);
+}
 
 void randomize_mapping() {
-    std::array<u8, 7> mapping = {0, 1, 2, 3, 4, 5, 6};
+    std::array<u8, 3> mapping = {0, 1, 3};
     static std::random_device rd;
     static std::mt19937 rng(rd());
 
     std::shuffle(mapping.begin(), mapping.end(), rng);
     structs::controlsMapping.BUTTON_X = mapping[0];
     structs::controlsMapping.BUTTON_Y = mapping[1];
-    structs::controlsMapping.BUTTON_Z = mapping[2];
-    structs::controlsMapping.BUTTON_B = mapping[3];
-    structs::controlsMapping.BUTTON_A = mapping[4];
-    structs::controlsMapping.BUTTON_L = mapping[5];
-    structs::controlsMapping.BUTTON_R = mapping[6];
+    structs::controlsMapping.BUTTON_B = mapping[2];
 }
 void randomizeControls() {
     set_bool_option(g_cvarRandomControls, true);
@@ -173,7 +171,6 @@ static constexpr structs::Effect effects[] = {
     { g_cvarMoonJump, "You can now moon jump!", "You can still moon jump!" },
     { g_cvarSlipperyFloors, "You're now slippery!", "You're still slippery!" },
     { g_cvarRandomControls, "Controls are now randomized!", "Controls are still randomized!", randomizeControls },
-    { g_cvarNoSword, "Your sword would like to take a break", "Your sword is still sleepy" },
     { g_cvarInstaKill, "Hope you don't take any hits!", "You are still quite fragile"},
     {g_cvarAttackDrain, "Attacking now takes damage!", "Attacking still takes damage!"},
 };
@@ -181,21 +178,24 @@ static constexpr structs::Effect effects[] = {
 static constexpr structs::cVarRegistration registrations[] = {
     {"effectEnabled", false, g_cvarEnableShuffleMode, register_bool},
     {"shuffleModeTimer", 6000, g_cvarShuffleModeTimer, register_int},
+    {"randTimerEnabled", false, g_cvarEnableRandTimer, register_bool},
+    {"randTimerUpperLimit", 180000, g_cvarRandTimerUpperLimit, register_int},
+    {"toastsEnabled", false, g_cvarEnableToasts, register_bool},
+    {"multipleShuffleEffectsEnabled", false, g_cvarEnableMultipleShuffleEffects, register_bool},
     {"fastLink", false, g_cvarFastLink, register_bool},
     {"invisibleLink", false, g_cvarInvisibleLink, register_bool},
     {"moonJump", false, g_cvarMoonJump, register_bool},
     {"slipperyFloors", false, g_cvarSlipperyFloors, register_bool},
     {"randomControls", false, g_cvarRandomControls, register_bool},
-    {"noSword", false, g_cvarNoSword, register_bool},
     {"instaKill", false, g_cvarInstaKill, register_bool},
     {"attackDrain", false, g_cvarAttackDrain, register_bool},
     {"attackDrainAmount", 1, g_cvarAttackDrainAmount, register_int},
     {"parryHealAmount", 1, g_cvarParryHealAmount, register_int},
+    {"punishParryMisses", false, g_cvarPunishParryMisses, register_bool},
 };
 
 // Struct Helpers ------------------------------
-void activateEffect(const structs::Effect& effect, UiToastDesc toast)
-{
+void activateEffect(const structs::Effect& effect, UiToastDesc toast) {
     if (get_bool_option(effect.cVar, true)) {
         toast.body_rml = effect.continuation_message;
     } else {
@@ -210,7 +210,52 @@ void activateEffect(const structs::Effect& effect, UiToastDesc toast)
         }
     }
 
-    svc_ui->push_toast(mod_ctx, &toast);
+    if (get_bool_option(g_cvarEnableToasts, true)) {
+        svc_ui->push_toast(mod_ctx, &toast);
+    }
+}
+
+void activateEffects(int effect_count, UiToastDesc toast) {
+    std::array<int, std::size(effects)> indices{};
+    for (int i = 0; i < std::size(effects); i++)
+        indices[i] = i;
+
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    std::shuffle(indices.begin(), indices.end(), gen);
+
+    // Activate Randomly Selected Effects
+    for (int i = 0; i < effect_count; i++) {
+        const structs::Effect& effect = effects[indices[i]];
+
+        if (get_bool_option(effect.cVar, true)) {
+            toast.body_rml = effect.continuation_message;
+        } else {
+            set_bool_option(effect.cVar, true);
+            toast.body_rml = effect.activation_message;
+        }
+
+        if (get_bool_option(g_cvarEnableToasts, true)) {
+            svc_ui->push_toast(mod_ctx, &toast);
+        }
+    }
+
+    // Disable all other effects.
+    for (int i = effect_count; i < std::size(effects); i++) {
+        bool selected = false;
+
+        for (int j = 0; j < effect_count; j++) {
+            if (indices[j] == i) {
+                selected = true;
+                break;
+            }
+        }
+
+        if (!selected) {
+            set_bool_option(effects[i].cVar, false);
+        }
+    }
 }
 // ---------------------------------------------
 
@@ -309,7 +354,7 @@ HookAction on_item_trigger_check(ModContext*, void* args, void* retval, void*) {
             break;
 
         case daAlink_c::daAlink_ITEM_BTN::BTN_Z:
-            i_btnFlag = (1 << structs::controlsMapping.BUTTON_Z);
+            i_btnFlag = daAlink_c::daAlink_ITEM_BTN::BTN_Z;
             break;
 
         case daAlink_c::daAlink_ITEM_BTN::BTN_B:
@@ -317,26 +362,21 @@ HookAction on_item_trigger_check(ModContext*, void* args, void* retval, void*) {
             break;
 
         case daAlink_c::daAlink_ITEM_BTN::BTN_A:
-            i_btnFlag = (1 << structs::controlsMapping.BUTTON_A);
+            i_btnFlag = daAlink_c::daAlink_ITEM_BTN::BTN_A;
             break;
 
         case daAlink_c::daAlink_ITEM_BTN::BTN_L:
-            i_btnFlag = (1 << structs::controlsMapping.BUTTON_L);
+            i_btnFlag = daAlink_c::daAlink_ITEM_BTN::BTN_L;
             break;
 
         case daAlink_c::daAlink_ITEM_BTN::BTN_R:
-            i_btnFlag = (1 << structs::controlsMapping.BUTTON_R);
+            i_btnFlag = daAlink_c::daAlink_ITEM_BTN::BTN_R;
             break;
         }
 
         link->mUseButtonFlags |= i_btnFlag;
         if (retval != nullptr) {
             *static_cast<BOOL*>(retval) = link->mItemTrigger & i_btnFlag;
-        }
-    } else if (get_bool_option(effects[NO_SWORD].cVar, false)) {
-        u8 i_btnFlag = mods::arg<u8>(args, 1);
-        if (i_btnFlag == daAlink_c::daAlink_ITEM_BTN::BTN_B) {
-            return HOOK_SKIP_ORIGINAL;
         }
     } else {
         return HOOK_CONTINUE;
@@ -359,7 +399,7 @@ HookAction on_dusk_execute(ModContext*, void* args, void* retval, void*) {
 }
 
 // Insta Kill
-static bool is_damage_from_attack_drain = false;
+bool is_damage_from_attack_drain = false;
 HookAction on_damage_magnification(ModContext*, void* args, void* retval, void*) {
     if (get_bool_option(effects[INSTA_KILL].cVar, false)) {
         if (retval != nullptr) {
@@ -412,11 +452,12 @@ void on_link_guard_attack_init_post(ModContext* ctx, void* args, void* retval, v
 static int missedParryCount = 0;
 HookAction on_link_slip_guard_pre(ModContext* ctx, void* args, void* retval, void* userdata) {
     daAlink_c* link = mods::arg<daAlink_c*>(args, 0);
-    if (link->mProcID == daAlink_c::daAlink_PROC::PROC_GUARD_ATTACK)
-    {
+    if (link->mProcID == daAlink_c::daAlink_PROC::PROC_GUARD_ATTACK) {
         dComIfGp_setItemLifeCount(get_int_option(g_cvarParryHealAmount, 1), 1);
         return HOOK_SKIP_ORIGINAL;
-    } else {
+    }
+
+    if (get_bool_option(g_cvarPunishParryMisses, false)) {
         missedParryCount++;
 
         if (missedParryCount == 3) {
@@ -508,9 +549,6 @@ ModResult build_effects_toggles_tab(ModContext*, UiWindowHandle, UiElementHandle
     svc_ui->pane_add_section(mod_ctx, left, "Moon Jump");
     add_option(left, "Enabled", g_cvarMoonJump, "Allows Link To Moon Jump", UI_CONTROL_TOGGLE);
 
-    svc_ui->pane_add_section(mod_ctx, left, "Sleepy Sword");
-    add_option(left, "Enabled", g_cvarNoSword, "No Swinging That Sword!", UI_CONTROL_TOGGLE);
-
     svc_ui->pane_add_section(mod_ctx, left, "Slippery Floors");
     add_option(left, "Enabled", g_cvarSlipperyFloors, "Makes All Floors Slippery", UI_CONTROL_TOGGLE);
 
@@ -524,6 +562,7 @@ ModResult build_effects_settings_tab(ModContext*, UiWindowHandle, UiElementHandl
     svc_ui->pane_add_section(mod_ctx, left, "Attack Drain Settings");
     add_option(left, "Drain Amount", g_cvarAttackDrainAmount, "The amount of life attacks will drain", UI_CONTROL_NUMBER);
     add_option(left, "Parry Heal Amount", g_cvarParryHealAmount, "The amount of life parries will heal", UI_CONTROL_NUMBER);
+    add_option(left, "Punish Parry Misses", g_cvarPunishParryMisses, "Explode if you miss 3 parries", UI_CONTROL_TOGGLE);
     return MOD_OK;
 }
 
@@ -558,6 +597,34 @@ ModResult build_panel(ModContext*, UiElementHandle panel, void*, ModError*) {
     control.label = "Shuffle Mode Timer (milliseconds)";
     control.binding = UI_BINDING_CONFIG_VAR;
     control.config_var = g_cvarShuffleModeTimer;
+    add_control(panel, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_TOGGLE;
+    control.label = "Enable Randomized Timer";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cvarEnableRandTimer;
+    add_control(panel, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_NUMBER;
+    control.label = "Randomized Timer Upper Limit (milliseconds)";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cvarRandTimerUpperLimit;
+    add_control(panel, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_TOGGLE;
+    control.label = "Enable Toast Notifications";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cvarEnableToasts;
+    add_control(panel, control);
+
+    control = UI_CONTROL_DESC_INIT;
+    control.kind = UI_CONTROL_TOGGLE;
+    control.label = "Enable Multiple Effects During Shuffle Mode";
+    control.binding = UI_BINDING_CONFIG_VAR;
+    control.config_var = g_cvarEnableMultipleShuffleEffects;
     add_control(panel, control);
 
     control = UI_CONTROL_DESC_INIT;
@@ -596,7 +663,16 @@ extern "C" {
         return MOD_OK;
     }
 
+    static bool randomControlsToggle = get_bool_option(g_cvarRandomControls, false);
     MOD_EXPORT ModResult mod_update(ModError* error) {
+        // Check if controls should be re-randomized
+        if (randomControlsToggle != get_bool_option(g_cvarRandomControls, false)) {
+            randomControlsToggle = !randomControlsToggle;
+            if (randomControlsToggle) {
+                randomizeControls();
+            }
+        }
+
         auto now = Clock::now();
         if (now - lastRun >= std::chrono::milliseconds(get_int_option(g_cvarShuffleModeTimer, 60000)) &&
             get_bool_option(g_cvarEnableShuffleMode, false)
@@ -614,7 +690,20 @@ extern "C" {
             toast.title_rml = "Chaos Mod Effect";
             toast.duration_ms = 2000;
 
-            activateEffect(effects[randomNumber - 1], toast);
+            if (get_bool_option(g_cvarEnableMultipleShuffleEffects, false)) {
+                activateEffects(randomNumber - 1, toast);
+            } else {
+                activateEffect(effects[randomNumber - 1], toast);
+            }
+
+            // Handle Randomized Timer
+            if (get_bool_option(g_cvarEnableRandTimer, false)) {
+                std::random_device rd_2;
+                std::mt19937 rng(rd_2());
+                std::uniform_int_distribution<int> dist_2(1000, get_int_option(g_cvarRandTimerUpperLimit, 180000));
+                int randTimer = dist_2(rng);
+                set_int_option(g_cvarShuffleModeTimer, randTimer);
+            }
         }
         return MOD_OK;
     }

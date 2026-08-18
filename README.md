@@ -2,6 +2,9 @@
 
 Experience Dusklight like it's your worst nightmare!
 
+## Check out the video linked below to see the mod in action!
+[I Made A CHAOS Mod For Twilight Princess](https://youtu.be/gazCxcrzAoI)
+
 ## Featuring:
 - ### 7 Challenge effects (with more on the way!)
   - Super-speed
@@ -9,7 +12,6 @@ Experience Dusklight like it's your worst nightmare!
   - Moon Jumping
   - Constant Slipperiness
   - Randomized Controls
-  - No Sword
   - Instant Kill
   - Attack Draining (with custom parry healing)
 - ### Shuffle Mode!
